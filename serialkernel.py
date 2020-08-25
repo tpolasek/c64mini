@@ -22,15 +22,17 @@ def write_mw(_serial, addr, val):
     num = _serial.write(command)
     if num != 21:
         print("write_mw write length mismatch:" + str(num))
-        sys.exit(-1)
+        return False
 
     echo_output = _serial.read(31)
     if command.strip() not in echo_output.strip():
         print("write_mw echo mismatch:" + str(command))
-        sys.exit(-1)
+        return False
+
+    return True
 
 
-def load_file_to_memory(_serial, addr_hex, file_path):
+def load_file_to_memory(_serial, addr_hex, file_path, addr_hex_offset="00000000"):
     print("==============================")
     print("Loading file to memory....")
 
@@ -46,8 +48,13 @@ def load_file_to_memory(_serial, addr_hex, file_path):
             eta_minutes_left = ((time_delta / 5000.0) * (payload_size - i + 1)) / 60.0
             print("ETA Left: %2.2fm" % eta_minutes_left)
 
-        int_value = struct.unpack('<I', payload[i:i+4])[0]
-        write_mw(_serial, index_addr_dec, int_value)
+        if int(addr_hex_offset, 16) <= index_addr_dec:
+            int_value = struct.unpack('<I', payload[i:i+4])[0]
+            if not write_mw(_serial, index_addr_dec, int_value):
+                if not write_mw(_serial, index_addr_dec, int_value):
+                    print("command retry failed..")
+                    sys.exit(-1)
+
         index_addr_dec += 4
     print("Memory load success: %s loaded to addr:0x%s" % (file_path,addr_hex))
 
@@ -68,7 +75,7 @@ def boot_system(_serial, addr_hex):
 
 
 def main():
-    ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.2)
+    ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.4)
 
     setup_injection(ser)
     load_file_to_memory(ser, '40007800', 'kernel.bin')
